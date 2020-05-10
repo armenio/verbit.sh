@@ -76,27 +76,23 @@ while read line;do
 
      if [[ -n $pin ]];then
         
+            EAPD=$(grep -A8 "Node $hexnode" $codecfile | grep "EAPD 0")
+            if [ "$EAPD" != "" ]; then
+                EAPD=""
+            fi
 
-            conntype=`grep -A9 "Node $hexnode" $codecfile | grep -A2 "$pin" | grep '\[*\]' | cut -f2 -d"[" | cut -f1 -d"]"`
-            EAPD=""
-            
-            #if [ "$conntype" == "Jack" ]; then
-                EAPD=$(grep -A8 "Node $hexnode" $codecfile | grep "EAPD 0")
-            #fi
-
-            #EAPD=$(grep -A8 "Node $hexnode" $codecfile | grep "EAPD 0")
-            #if [ "$EAPD" != "" ]; then
+            if [ "$EAPD" != "" ]; then
                 desc=`echo $line | cut -f2 -d"]"`
                 jack=`grep -A9 "Node $hexnode" $codecfile | grep -A2 "$pin" | grep Color | cut -f2 -d"=" | cut -f1 -d","`
                 color=`grep -A9 "Node $hexnode" $codecfile | grep -A2 "$pin" | grep Color | cut -f3 -d"="`
                 conntype=`grep -A9 "Node $hexnode" $codecfile | grep -A2 "$pin" | grep '\[*\]' | cut -f2 -d"[" | cut -f1 -d"]"`
-            #else
-            #    desc=`echo $line | cut -f2 -d"]"`
-            #    jack=`grep -A8 "Node $hexnode" $codecfile | grep -A2 "$pin" | grep Color | cut -f2 -d"=" | cut -f1 -d","`
-            #    color=`grep -A8 "Node $hexnode" $codecfile | grep -A2 "$pin" | grep Color | cut -f3 -d"="`
-            #    conntype=`grep -A8 "Node $hexnode" $codecfile | grep -A2 "$pin" | grep '\[*\]' | cut -f2 -d"[" | cut -f1 -d"]"`
-            #fi
-
+            else
+                desc=`echo $line | cut -f2 -d"]"`
+                jack=`grep -A8 "Node $hexnode" $codecfile | grep -A2 "$pin" | grep Color | cut -f2 -d"=" | cut -f1 -d","`
+                color=`grep -A8 "Node $hexnode" $codecfile | grep -A2 "$pin" | grep Color | cut -f3 -d"="`
+                conntype=`grep -A8 "Node $hexnode" $codecfile | grep -A2 "$pin" | grep '\[*\]' | cut -f2 -d"[" | cut -f1 -d"]"`
+            fi
+echo "$desc"
             direction=`grep -A9 "Node $hexnode" $codecfile | grep 'ControlAmp' | grep "dir=" | sed -E 's/^.*dir=([^,]*).*$/\1/'
             # 
             #x | cut -f2 -d"=" | cut -f1 -d","`
@@ -132,10 +128,8 @@ while read line;do
                  fi
                  i=i+1
             done
-
-            blklisted=0
                  
-            if [[ $blklisted = 0 ]];then
+            #if [[ $blklisted = 0 ]];then
                  vdesc[verbcount]=`echo "$desc" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'`
                  vjack[verbcount]=`echo $jack | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'`
                  vcolor[verbcount]=`echo $color | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'`
@@ -149,9 +143,9 @@ while read line;do
                  verbf[verbcount]=`echo $verb4 | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'`
                  veapd[verbcount]=`echo $eapd | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'`
                  verbcount=verbcount+1
-            else
+            #else
                  blnodes=$blnodes$hexnode" "
-            fi
+            #fi
 
      fi
 
@@ -296,7 +290,7 @@ while [ $i -lt $verbcount ]; do
         dtype="7"
         notes=`printf "%s %-10s\n" "$notes" "$dtype-Modem H."`
     fi
-    if [ "`echo ${vdesc[i]} | grep -y 'Line In'`" != "" ] || [ "`echo ${vdesc[i]} | grep -y 'Mic at Ext'`" != "" ]; then
+    if [ "`echo ${vdesc[i]} | grep -y 'Line In'`" != "" ]; then
         dtype="8"
         notes=`printf "%s %-10s\n" "$notes" "$dtype-Line In"`
     fi
@@ -518,7 +512,7 @@ while [ $i -lt $verbcount ]; do
 done
 
 echo -e "$brk\n"
-#exit 0
+exit 0
 # Show nodes that were blacklisted and removed
 echo "Blacklist:" >> $debug
 echo ${blacklist[*]} >> $debug
