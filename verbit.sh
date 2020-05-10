@@ -10,9 +10,11 @@
 # Many Thanks to THe KiNG    
 # Signal64                                                
 
-blacklist[0]="411111f0"
-blacklist[1]="400000f0"
-blacklist[2]="CD at Int ATAPI"
+blacklist[0]="Modem Hand at Ext N/A"
+blacklist[1]="40000000"
+#blacklist[0]="411111f0"
+#blacklist[1]="400000f0"
+#blacklist[2]="CD at Int ATAPI"
 
 codecfile=$1
 debug=$(dirname $1)/verbitdebug.txt
@@ -49,10 +51,7 @@ codecaddr=`head $codecfile | grep Address: | cut -f2 -d":"`
 codechex=`head $codecfile | grep "Vendor Id:" | cut -f2 -d":"`
 codecdec=`printf "%d" $codechex`
 
-printf "\nCodec: %s     Address: %s     DevID: %s (%s)\n" "$codecname" $codecaddr $codecdec $codechex
 
-echo -e "\n     Jack     Color    Description                                    Node         PinDefault                         Original Verbs\n$brk"
- 
 #addr=`grep Address $codecfile | cut -f2 -d" "`
 
 function debug
@@ -63,6 +62,156 @@ function debug
 }
 
 typeset -i nidnum=0
+
+if [ "$2" == "map" ]; then
+
+while read line; do
+ 
+     chknode=`echo $line | grep "Node 0x" | cut -f2 -d" "`
+     if [[ -n $chknode ]]; then
+            hexnode=$chknode
+            vnode=`echo $hexnode | cut -f2 -d"x"` 
+     fi
+
+     chknode2=`echo $line | grep "Node $hexnode \[\(Audio\|Pin\) \(Input\|Output\|Mixer\|Complex\)\]"`
+
+     tmpfile=`grep -A8 "Node $hexnode" $codecfile | grep 'Amp-\(In\|Out\) caps:'`
+     #echo $tmpfile
+     
+     if [ "$hexnode" != "" ] && [ "$chknode2" != "" ]; then
+
+        decnode=`printf "%d" "$hexnode"`
+
+        
+        
+        type=`echo $line | cut -f2 -d"[" | cut -f2 -d" " | cut -f1 -d"]"`
+
+        
+        printf "%s - %-70s %d\n" $hexnode $type "$hexnode"
+
+        ampin=`echo $tmpfile | grep 'Amp-In caps:' | sed -E 's/^(.*)Amp-In caps:(.*)Amp-In vals:(.*)$/\2/'`
+        ampout=`echo $tmpfile | grep 'Amp-Out caps:' | sed -E 's/^(.*)Amp-Out caps:(.*)Amp-Out vals:(.*)$/\2/'`
+
+        #nsteps=`echo "$tmpfile" | grep 'Amp\-Out caps:' | sed -E 's/^.*nsteps=([^,]*).*$/\1/'`
+        #stepsize=`echo "$tmpfile" | grep 'Amp-Out caps:' | sed -E 's/^.*stepsize=([^,]*).*$/\1/'`
+        #mute=`echo "$tmpfile" | grep 'Amp-Out caps:' | sed -E 's/^.*mute=([^,]*).*$/\1/'`
+
+        Boost=""
+
+        MuteInputAmp="false"
+        PublishMute="false"
+        PublishVolume="false"
+        VolumeInputAmp="false"
+
+
+        if [ "`echo $tmpfile | grep 'Amp-In caps:'`" != "" ]; then
+            
+            ofs=`echo $ampin | grep 'ofs=' | sed -E 's/^(.*)ofs=([^,]*),(.*)$/\2/' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'`
+            nsteps=`echo $ampin | grep 'nsteps=' | sed -E 's/^(.*)nsteps=([^,]*),(.*)$/\2/' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'`
+            stepsize=`echo $ampin | grep 'stepsize=' | sed -E 's/^(.*)stepsize=([^,]*),(.*)$/\2/' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'`
+            mute=`echo $ampin | grep 'mute=' | sed -E 's/^(.*)mute=([^,]*),(.*)$/\2/' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'`
+
+            nboost=`printf "%d" "$nsteps"`
+
+            if [ "$type" == "Complex" ] && [ "$nboost" != "0" ]; then # || [ "$type" == "Mixer" ]; then
+                #printf "\t\tBoost=%s\n" "$nboost"
+                Boost="$nboost"
+            else
+                if [ "$mute" != "0" ]; then
+                    MuteInputAmp="true"
+                fi
+
+                if [ "$nsteps" != "0" ]; then
+                    VolumeInputAmp="true"
+                fi
+            fi
+        fi
+
+        if [ "`echo $tmpfile | grep 'Amp-Out caps:'`" != "" ]; then
+
+            ofs=`echo $ampout | grep 'ofs=' | sed -E 's/^(.*)ofs=([^,]*),(.*)$/\2/' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'`
+            nsteps=`echo $ampout | grep 'nsteps=' | sed -E 's/^(.*)nsteps=([^,]*),(.*)$/\2/' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'`
+            stepsize=`echo $ampout | grep 'stepsize=' | sed -E 's/^(.*)stepsize=([^,]*),(.*)$/\2/' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'`
+            mute=`echo $ampout | grep 'mute=' | sed -E 's/^(.*)mute=([^,]*),(.*)$/\2/' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'`
+
+            if [ "$mute" != "0" ]; then
+                PublishMute="true"
+            fi
+
+            if [ "$nsteps" != "0" ]; then
+                PublishVolume="true"
+            fi
+        fi
+
+
+        indent="                            "
+        printf "%-28s<dict>\n" $indent
+if [ "$type" == "Complex" ] && [ "$Boost" != "" ]; then
+        printf "%-28s    <key>Boost</key>\n" $indent
+        printf "%-28s    <integer>$Boost</integer>\n" $indent
+else
+        printf "%-28s    <key>Amp</key>\n" $indent
+        printf "%-28s    <dict>\n" $indent
+    if [ "$type" == "Input" ] || [ "$type" == "Output" ]; then
+
+        printf "%-28s        <key>Channels</key>\n" $indent
+        printf "%-28s        <array>\n" $indent
+        printf "%-28s            <dict>\n" $indent
+        printf "%-28s                <key>Channel</key>\n" $indent
+        printf "%-28s                <integer>1</integer>\n" $indent
+        printf "%-28s                <key>Bind</key>\n" $indent
+        printf "%-28s                <integer>1</integer>\n" $indent
+        printf "%-28s            </dict>\n" $indent
+        printf "%-28s            <dict>\n" $indent
+        printf "%-28s                <key>Channel</key>\n" $indent
+        printf "%-28s                <integer>2</integer>\n" $indent
+        printf "%-28s                <key>Bind</key>\n" $indent
+        printf "%-28s                <integer>2</integer>\n" $indent
+        printf "%-28s            </dict>\n" $indent
+        printf "%-28s        </array>\n" $indent
+    fi
+        printf "%-28s        <key>MuteInputAmp</key>\n" $indent
+        printf "%-28s        <$MuteInputAmp/>\n" $indent
+        printf "%-28s        <key>PublishMute</key>\n" $indent
+        printf "%-28s        <$PublishMute/>\n" $indent
+        printf "%-28s        <key>PublishVolume</key>\n" $indent
+        printf "%-28s        <$PublishVolume/>\n" $indent
+        printf "%-28s        <key>VolumeInputAmp</key>\n" $indent
+        printf "%-28s        <$VolumeInputAmp/>\n" $indent
+        printf "%-28s    </dict>\n" $indent
+fi
+        printf "%-28s    <key>NodeID</key>\n" $indent
+        printf "%-28s    <integer>$decnode</integer>\n" $indent
+        printf "%-28s</dict>\n" $indent
+
+        #if [ "$nsteps" != "0" ]; then
+            #    echo "boost = $nsteps"
+            #fi
+        
+        #echo "$type"
+
+        
+
+        #direction=`grep -A9 "Node $hexnode" $codecfile | grep 'ControlAmp' | grep "dir=" | sed -E 's/^.*dir=([^,]*).*$/\1/'
+
+        #echo $line;
+#         echo $node;
+
+        echo ""
+     fi
+
+done < $codecfile
+
+exit
+
+fi
+
+printf "\nCodec: %s     Address: %s     DevID: %s (%s)\n" "$codecname" $codecaddr $codecdec $codechex
+
+echo -e "\n     Jack     Color    Description                                    Node         PinDefault                         Original Verbs\n$brk"
+
+
+EAPD_EXISTS=0
 
 while read line;do
  
@@ -76,24 +225,29 @@ while read line;do
 
      if [[ -n $pin ]];then
         
-            EAPD=$(grep -A8 "Node $hexnode" $codecfile | grep "EAPD 0")
-            if [ "$EAPD" != "" ]; then
-                EAPD=""
-            fi
 
-            if [ "$EAPD" != "" ]; then
+            conntype=`grep -A9 "Node $hexnode" $codecfile | grep -A2 "$pin" | grep '\[*\]' | cut -f2 -d"[" | cut -f1 -d"]"`
+            DEAPD=""
+            
+            #if [ $EAPD_EXISTS == 0 ]; then
+                DEAPD=$(grep -A8 "Node $hexnode" $codecfile | grep "EAPD 0")
+            #fi
+
+            #DEAPD=$(grep -A8 "Node $hexnode" $codecfile | grep "EAPD 0")
+            #if [ "$DEAPD" != "" ]; then
                 desc=`echo $line | cut -f2 -d"]"`
                 jack=`grep -A9 "Node $hexnode" $codecfile | grep -A2 "$pin" | grep Color | cut -f2 -d"=" | cut -f1 -d","`
                 color=`grep -A9 "Node $hexnode" $codecfile | grep -A2 "$pin" | grep Color | cut -f3 -d"="`
                 conntype=`grep -A9 "Node $hexnode" $codecfile | grep -A2 "$pin" | grep '\[*\]' | cut -f2 -d"[" | cut -f1 -d"]"`
-            else
-                desc=`echo $line | cut -f2 -d"]"`
-                jack=`grep -A8 "Node $hexnode" $codecfile | grep -A2 "$pin" | grep Color | cut -f2 -d"=" | cut -f1 -d","`
-                color=`grep -A8 "Node $hexnode" $codecfile | grep -A2 "$pin" | grep Color | cut -f3 -d"="`
-                conntype=`grep -A8 "Node $hexnode" $codecfile | grep -A2 "$pin" | grep '\[*\]' | cut -f2 -d"[" | cut -f1 -d"]"`
-            fi
-echo "$desc"
-            direction=`grep -A9 "Node $hexnode" $codecfile | grep 'ControlAmp' | grep "dir=" | sed -E 's/^.*dir=([^,]*).*$/\1/'
+            #else
+            #    desc=`echo $line | cut -f2 -d"]"`
+            #    jack=`grep -A8 "Node $hexnode" $codecfile | grep -A2 "$pin" | grep Color | cut -f2 -d"=" | cut -f1 -d","`
+            #    color=`grep -A8 "Node $hexnode" $codecfile | grep -A2 "$pin" | grep Color | cut -f3 -d"="`
+            #    conntype=`grep -A8 "Node $hexnode" $codecfile | grep -A2 "$pin" | grep '\[*\]' | cut -f2 -d"[" | cut -f1 -d"]"`
+            #fi
+            dassoc=`grep -A9 "Node $hexnode" $codecfile | grep 'DefAssociation = 0x' | sed -E 's/^(.*)DefAssociation = 0x([^,]*),(.*)$/\2/'`
+
+            direction=`grep -A9 "Node $hexnode" $codecfile | grep 'ControlAmp' | grep "dir=" | sed -E 's/^.*dir=([^,]*).*$/\1/'`
             # 
             #x | cut -f2 -d"=" | cut -f1 -d","`
             
@@ -110,26 +264,41 @@ echo "$desc"
             verb4=$codecaddr$vnode"71f"`echo $pin | cut -c1,2`
 
             # 70c EAPD
-            if [ "$EAPD" != "" ]; then
-                eapd=$codecaddr$vnode"70c0"`echo $EAPD | cut -c8`
+            # Table 93. EAPD/BTL Enable
+            #
+            #       Verb ID     Payload (8 Bits)            Response (32 Bits)
+            # Set   70Ch        # bits 7:3 are Reserved     0
+                                # bit 2 = L-R Swap
+                                # bit 1 is EAPD
+                                # bit 0 is BTL
+            if [ "$DEAPD" != "" ]; then
+                eapd=$codecaddr$vnode"70c02"
+                EAPD_EXISTS=1
             else
                 eapd=""
             fi
 
             printf "%7s %7s %-27s %3d %-6s %-12s %s %s %s %s\n" $jack $color "$desc" $hexnode $hexnode "0x"$pin $verb1 $verb2 $verb3 $verb4
 
-            chkblklist="$conntype $jack $color $desc $hexnode 0x$pin $eapd"
+            chkblklist="$jack $color $desc $hexnode 0x$pin $DEAPD"
+            #chkblklist="0x$pin"
 
-            blklisted=0;i=0
-            while [ $i -lt ${#blacklist[@]} ];do
-                 chk=`echo $chkblklist | grep "${blacklist[i]}"`
-                 if [[ $chk ]];then
-                        blklisted=1
-                 fi
-                 i=i+1
+            #debug ""
+            #debug "$chkblklist"
+            #debug ""
+
+            blklisted=0;
+            i=0
+            while [ $i -lt ${#blacklist[@]} ]; do
+                chk=`echo $chkblklist | grep "${blacklist[i]}"`
+                
+                if [[ $chk ]]; then
+                    blklisted=1
+                fi
+                i=i+1
             done
-                 
-            #if [[ $blklisted = 0 ]];then
+             
+            if [[ $blklisted = 0 ]];then
                  vdesc[verbcount]=`echo "$desc" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'`
                  vjack[verbcount]=`echo $jack | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'`
                  vcolor[verbcount]=`echo $color | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'`
@@ -141,22 +310,26 @@ echo "$desc"
                  verbd[verbcount]=`echo $verb2 | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'`
                  verbe[verbcount]=`echo $verb3 | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'`
                  verbf[verbcount]=`echo $verb4 | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'`
-                 veapd[verbcount]=`echo $eapd | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'`
+                 veapd[verbcount]=`echo "$eapd" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'`
+                 vdassoc[verbcount]=`echo "$dassoc" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'`
+                 
                  verbcount=verbcount+1
-            #else
+            else
                  blnodes=$blnodes$hexnode" "
-            #fi
+            fi
 
      fi
 
 done < $codecfile
+
+if [ "$1" == "custom" ]; then
 
 echo -e "$brk\n"
 
 echo ""
 echo ""
 
-printf "%3s %3s %-6s %-17s %-8s %-8s %-8s %-8s %-8s          %s\n" "Seq" "D" "Node" "Pin" "Verb C" "Verb D" "Verb E" "Verb F" "EAPD" "Notes"
+printf "%2s %3s %-6s %-17s %-8s %-8s %-8s %-8s %-8s          %s\n" "Seq" "D" "Node" "Pin" "Verb C" "Verb D" "Verb E" "Verb F" "EAPD" "Notes"
 
 echo "$brk"
 
@@ -171,22 +344,23 @@ while [ $i -lt $verbcount ]; do
     #fi
 
 
-    notes=`printf "%-3s\n" "$j"`
+    notes=`printf "%-2s\n" "$j"`
     #X = Default Association
     #Values: 1, 2, 3, 4, 5, 6, 7, 8, 9, a, b, c, d and f
     #Y = Sequence 
     #Values: Always set this to '0' because Apple dont use analog multi outputs in their codec.
 
     assoc=`echo ${verbc[i]} | cut -c7`
-    if [[ $assoc = 0 ]]; then
-         assoc=1
-    fi
+    #if [[ $assoc = 0 ]]; then
+    #     assoc=1
+    #fi
 
     
     #verbc[i]="`echo ${verbc[i]} | cut -c1-6`${assoc}0"
     #verbc[i]="`echo ${verbc[i]} | cut -c1-6`${j}0"
     seq=`printf "%x\n" "$j"`
-    verbc[i]="`echo ${verbc[i]} | cut -c1-6`${seq}0"
+    #verbc[i]="`echo ${verbc[i]} | cut -c1-6`${seq}0"
+    verbc[i]="`echo ${verbc[i]} | cut -c1-6`${vdassoc[i]}0"
 
     notes=`printf "%s %-8s\n" "$notes" "0-Always"`
 
@@ -202,7 +376,7 @@ while [ $i -lt $verbcount ]; do
 
 
 
-    notes=`printf "%s -- \n" "$notes"`
+    notes=`printf "%s-" "$notes"`
 
     color=`echo ${verbd[i]} | cut -c7`
     
@@ -233,11 +407,11 @@ while [ $i -lt $verbcount ]; do
     misc="0"
     #debug "`echo ${vdesc[i]} | grep -y 'Int'`"
     #debug "${verbd[i]}"
-    if [ "`echo ${vdesc[i]} | grep -y ' at Int'`" != "" ]; then
+    if [ "`echo ${vdesc[i]} | grep -y 'In at Ext'`" != "" ] || [ "`echo ${vdesc[i]} | grep -y ' at Int'`" != "" ]; then
         misc="1"
-        notes=`printf "%s %-10s\n" "$notes" "$misc-Internal"`
+        notes=`printf "%s %-10s\n" "$notes" "$misc-In/B.In"`
     else
-        notes=`printf "%s %-10s\n" "$notes" "$misc-External"`
+        notes=`printf "%s %-10s\n" "$notes" "$misc-Out/Ext"`
     fi
 
     verbd[i]="`echo ${verbd[i]} | cut -c1-6`${color}${misc}"
@@ -254,7 +428,7 @@ while [ $i -lt $verbcount ]; do
 
 
 
-    notes=`printf "%s -- \n" "$notes"`
+    notes=`printf "%s-" "$notes"`
 
     dtype=`echo ${verbe[i]} | cut -c7`
 
@@ -323,80 +497,86 @@ while [ $i -lt $verbcount ]; do
         notes=`printf "%s %-10s\n" "$notes" "$dtype-Other"`
     fi
 
-    ctype=`echo ${verbe[i]} | cut -c8`
-
-    if [ "`echo ${vjack[i]} | grep -y '1/8'`" != "" ]; then
-        ctype="1"
-        notes=`printf "%s %-10s\n" "$notes" "$ctype-1/8"`
-    fi
-    if [ "`echo ${vjack[i]} | grep -y '1/4'`" != "" ]; then
-        ctype="2"
-        notes=`printf "%s %-10s\n" "$notes" "$ctype-1/4"`
-    fi
-    if [ "`echo ${vjack[i]} | grep -y 'Digital'`" != "" ]; then
-        ctype="6"
-        notes=`printf "%s %-10s\n" "$notes" "$ctype-Digital"`
-    fi
-    if [ "`echo ${vjack[i]} | grep -y 'Analog'`" != "" ]; then
-        ctype="7"
-        notes=`printf "%s %-10s\n" "$notes" "$ctype-Analog"`
-    fi
 
 
+    #if [ "`echo ${vdesc[i]} | grep -y 'Mic \(at \)\?Int\?'`" != "" ]; then
+    #    ctype="0"
+    #    notes=`printf "%s %-10s\n" "$notes" "Unknown"`
+    #else
+        ctype=`echo ${verbe[i]} | cut -c8`
 
-    if [ "`echo ${vjack[i]} | grep -y 'Unknown'`" != "" ]; then
-        ctype="0"
-        notes=`printf "%s %-10s\n" "$notes" "$ctype-Unknown"`
-    fi
-    if [ "`echo ${vjack[i]} | grep -y '1/8 \(stereo\|mono\)'`" != "" ]; then
-        ctype="1"
-        notes=`printf "%s %-10s\n" "$notes" "$ctype-1/8"`
-    fi
-    if [ "`echo ${vjack[i]} | grep -y '1/4 \(stereo\|mono\)'`" != "" ]; then
-        ctype="2"
-        notes=`printf "%s %-10s\n" "$notes" "$ctype-1/4"`
-    fi
-    if [ "`echo ${vjack[i]} | grep -y 'ATAPI internal'`" != "" ]; then
-        ctype="3"
-        notes=`printf "%s %-10s\n" "$notes" "$ctype-ATAPI int"`
-    fi
-    if [ "`echo ${vjack[i]} | grep -y 'RCA'`" != "" ]; then
-        ctype="4"
-        notes=`printf "%s %-10s\n" "$notes" "$ctype-RCA"`
-    fi
-    if [ "`echo ${vjack[i]} | grep -y 'Optical'`" != "" ]; then
-        ctype="5"
-        notes=`printf "%s %-10s\n" "$notes" "$ctype-Optical"`
-    fi
-    if [ "`echo ${vjack[i]} | grep -y 'Other Digital'`" != "" ]; then
-        ctype="6"
-        notes=`printf "%s %-10s\n" "$notes" "$ctype-O. Digital"`
-    fi
-    if [ "`echo ${vjack[i]} | grep -y 'Other Analog'`" != "" ]; then
-        ctype="7"
-        notes=`printf "%s %-10s\n" "$notes" "$ctype-O. Analog"`
-    fi
-    if [ "`echo ${vjack[i]} | grep -y 'Multichannel Analog (DIN)'`" != "" ]; then
-        ctype="8"
-        notes=`printf "%s %-10s\n" "$notes" "$ctype-M. A. (DIN)"`
-    fi
-    if [ "`echo ${vjack[i]} | grep -y 'XLR/Professional'`" != "" ]; then
-        ctype="9"
-        notes=`printf "%s %-10s\n" "$notes" "$ctype-XLR/Pro."`
-    fi
-    if [ "`echo ${vjack[i]} | grep -y 'RJ-11 (Modem)'`" != "" ]; then
-        ctype="a"
-        notes=`printf "%s %-10s\n" "$notes" "$ctype-RJ-11 (Modem)"`
-    fi
-    if [ "`echo ${vjack[i]} | grep -y 'Combination'`" != "" ]; then
-        ctype="b"
-        notes=`printf "%s %-10s\n" "$notes" "$ctype-Combination"`
-    fi
-    if [ "`echo ${vjack[i]} | grep -y 'Other'`" != "" ]; then
-        ctype="f"
-        notes=`printf "%s %-10s\n" "$notes" "$ctype-Other"`
-    fi
+        if [ "`echo ${vjack[i]} | grep -y '1/8'`" != "" ]; then
+            ctype="1"
+            notes=`printf "%s %-10s\n" "$notes" "$ctype-1/8"`
+        fi
+        if [ "`echo ${vjack[i]} | grep -y '1/4'`" != "" ]; then
+            ctype="2"
+            notes=`printf "%s %-10s\n" "$notes" "$ctype-1/4"`
+        fi
+        if [ "`echo ${vjack[i]} | grep -y 'Digital'`" != "" ]; then
+            ctype="6"
+            notes=`printf "%s %-10s\n" "$notes" "$ctype-Digital"`
+        fi
+        if [ "`echo ${vjack[i]} | grep -y 'Analog'`" != "" ]; then
+            ctype="7"
+            notes=`printf "%s %-10s\n" "$notes" "$ctype-Analog"`
+        fi
 
+
+
+        if [ "`echo ${vjack[i]} | grep -y 'Unknown'`" != "" ]; then
+            ctype="0"
+            notes=`printf "%s %-10s\n" "$notes" "$ctype-Unknown"`
+        fi
+        if [ "`echo ${vjack[i]} | grep -y '1/8 \(stereo\|mono\)'`" != "" ]; then
+            ctype="1"
+            notes=`printf "%s %-10s\n" "$notes" "$ctype-1/8"`
+        fi
+        if [ "`echo ${vjack[i]} | grep -y '1/4 \(stereo\|mono\)'`" != "" ]; then
+            ctype="2"
+            notes=`printf "%s %-10s\n" "$notes" "$ctype-1/4"`
+        fi
+        if [ "`echo ${vjack[i]} | grep -y 'ATAPI internal'`" != "" ]; then
+            ctype="3"
+            notes=`printf "%s %-10s\n" "$notes" "$ctype-ATAPI int"`
+        fi
+        if [ "`echo ${vjack[i]} | grep -y 'RCA'`" != "" ]; then
+            ctype="4"
+            notes=`printf "%s %-10s\n" "$notes" "$ctype-RCA"`
+        fi
+        if [ "`echo ${vjack[i]} | grep -y 'Optical'`" != "" ]; then
+            ctype="5"
+            notes=`printf "%s %-10s\n" "$notes" "$ctype-Optical"`
+        fi
+        if [ "`echo ${vjack[i]} | grep -y 'Other Digital'`" != "" ]; then
+            ctype="6"
+            notes=`printf "%s %-10s\n" "$notes" "$ctype-O. Digital"`
+        fi
+        if [ "`echo ${vjack[i]} | grep -y 'Other Analog'`" != "" ]; then
+            ctype="7"
+            notes=`printf "%s %-10s\n" "$notes" "$ctype-O. Analog"`
+        fi
+        if [ "`echo ${vjack[i]} | grep -y 'Multichannel Analog (DIN)'`" != "" ]; then
+            ctype="8"
+            notes=`printf "%s %-10s\n" "$notes" "$ctype-M. A. (DIN)"`
+        fi
+        if [ "`echo ${vjack[i]} | grep -y 'XLR/Professional'`" != "" ]; then
+            ctype="9"
+            notes=`printf "%s %-10s\n" "$notes" "$ctype-XLR/Pro."`
+        fi
+        if [ "`echo ${vjack[i]} | grep -y 'RJ-11 (Modem)'`" != "" ]; then
+            ctype="a"
+            notes=`printf "%s %-10s\n" "$notes" "$ctype-RJ-11 (Modem)"`
+        fi
+        if [ "`echo ${vjack[i]} | grep -y 'Combination'`" != "" ]; then
+            ctype="b"
+            notes=`printf "%s %-10s\n" "$notes" "$ctype-Combination"`
+        fi
+        if [ "`echo ${vjack[i]} | grep -y 'Other'`" != "" ]; then
+            ctype="f"
+            notes=`printf "%s %-10s\n" "$notes" "$ctype-Other"`
+        fi
+    #fi
 
 
     verbe[i]="`echo ${verbe[i]} | cut -c1-6`${dtype}${ctype}"
@@ -409,7 +589,7 @@ while [ $i -lt $verbcount ]; do
 
 
 
-    notes=`printf "%s -- \n" "$notes"`
+    notes=`printf "%s-" "$notes"`
 
 
     # 11 - Jack and Internal device are attached
@@ -423,6 +603,10 @@ while [ $i -lt $verbcount ]; do
     # 00 - Port is connected to a Jack
     if [ "${vconntype[i]}" == "Jack" ]; then
         b1="00"
+
+        #if [ "`echo ${vdesc[i]} | grep -y ' at Ext'`" != "" ]; then
+        #    b1="11"            
+        #fi
     fi
 
     # 10 - Fixed Function/Built In Device (integrated speaker, mic, etc)
@@ -443,15 +627,13 @@ while [ $i -lt $verbcount ]; do
     #notes=`printf "%s %-6s\n" "$notes" "$b2-${vdirection[i]}"`
 
     b2="11" 
-    if [ "`echo ${vdesc[i]} | grep -y ' at Int'`" != "" ]; then
+    if [ "`echo ${vdesc[i]} | grep -y 'In at Ext'`" != "" ] || [ "`echo ${vdesc[i]} | grep -y ' at Int'`" != "" ]; then
         b2="01" # Internal
-        notes=`printf "%s %-6s\n" "$notes" "$b2-Internal"`
-    fi
-    if [ "`echo ${vdesc[i]} | grep -y ' at Ext'`" != "" ]; then
+        notes=`printf "%s %-6s\n" "$notes" "$b2-In/B.In"`
+    else
         b2="00" #External on primary chassis 
-        notes=`printf "%s %-6s\n" "$notes" "$b2-External"`
+        notes=`printf "%s %-6s\n" "$notes" "$b2-Out/Ext"`
     fi
-
 
     b3=""
     if [ "`echo ${vdesc[i]} | grep -y 'at [^ ]* N/A'`" != "" ]; then
@@ -512,7 +694,11 @@ while [ $i -lt $verbcount ]; do
 done
 
 echo -e "$brk\n"
-exit 0
+
+exit
+
+fi
+#exit 0
 # Show nodes that were blacklisted and removed
 echo "Blacklist:" >> $debug
 echo ${blacklist[*]} >> $debug
