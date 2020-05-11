@@ -177,6 +177,38 @@ my @codec_compares_osx1013 = (
     0x10de0000,
 );
 
+my @codec_compares_osxALL = (
+    0x1aec87ff,
+    0x15ad1974,
+    0x8384767f,
+    0x1002aa00,
+    0x83847680,
+    0x10134205,
+    0x1002aa01,
+    0x10de0006,
+    0x10134206,
+    0x11d41983,
+    0x10ec0884,
+    0x10ec0261,
+    0x10de003f,
+    0x10de0013,
+    0x10de0007,
+    0x10de000a,
+    0x10de000c,
+    0x11d41984,
+    0x11d4198b,
+    0x10ec0262,
+    0x10ec0885,
+    0x1aec8800,
+    0x10de0014,
+    0x15ad1975,
+    0x80862804,
+    0x80862807,
+    0x10134208,
+    0x10de0000,
+    0x11d4198a,
+);
+
 my @codec_compares = ();
 my @ranges = ();
 
